@@ -171,6 +171,7 @@
                     <optgroup label="🔥 PREMIUM PAID APIS">
                         <option value="premium">Vedx Premium API (BEST ACCURACY)</option>
                         <option value="imeimaster">IMEI Master (Premium Paid)</option>
+                        <option value="imeiinfo">IMEI.info (High Accuracy Web Service)</option>
                     </optgroup>
                     <optgroup label="⚡ COMBINED & INTELLIGENT">
                         <option value="multi">Multi-Source Intelligence (API + Local)</option>
@@ -542,7 +543,7 @@
                         } else {
                             responseData = data;
                         }
-                        
+
                         if (responseData && responseData.data) {
                             const device = responseData.data;
                             return {
@@ -568,6 +569,74 @@
                         }
                     } catch (e) {
                         console.error('IMEI Master Parse Error:', e);
+                    }
+                    return null;
+                }
+            },
+            'imeiinfo': {
+                name: '🔒 IMEI.info (High Accuracy Web Service)',
+                url: (imei) => `https://api.allorigins.win/get?url=${encodeURIComponent('https://www.imei.info/?imei=' + imei)}`,
+                parser: async (data, imei) => {
+                    try {
+                        let responseData;
+                        if (data.contents) {
+                            responseData = JSON.parse(data.contents);
+                        } else {
+                            responseData = data;
+                        }
+
+                        console.log('IMEI.info Raw Response:', responseData);
+
+                        // IMEI.info typically returns HTML, so we need to parse it
+                        if (responseData && typeof responseData === 'string') {
+                            // Try to extract device information from HTML response
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(responseData, 'text/html');
+
+                            // Look for device information in the HTML
+                            const deviceName = doc.querySelector('.device-name, .model-name, h1')?.textContent?.trim();
+                            const brand = doc.querySelector('.brand-name, .manufacturer')?.textContent?.trim() || 'Unknown';
+                            const model = deviceName || 'Unknown Model';
+
+                            // Extract specs from the page
+                            const specs = [];
+                            const specElements = doc.querySelectorAll('.spec-item, .specification, .detail');
+
+                            specElements.forEach(el => {
+                                const label = el.querySelector('.label, .title')?.textContent?.trim();
+                                const value = el.querySelector('.value, .content')?.textContent?.trim();
+                                if (label && value) {
+                                    specs.push({ label, value });
+                                }
+                            });
+
+                            return {
+                                header: {
+                                    brand: brand,
+                                    model: model,
+                                    imei: imei,
+                                    type: 'Smartphone',
+                                    photo: `https://placehold.co/120x150/000000/00aaff?text=${encodeURIComponent(brand)}`
+                                },
+                                items: [
+                                    { role: 'header', title: ':: IMEI.INFO DEVICE DATA ::' },
+                                    { role: 'item', title: 'Brand', content: brand },
+                                    { role: 'item', title: 'Model', content: model },
+                                    { role: 'item', title: 'IMEI', content: imei },
+                                    { role: 'header', title: ':: EXTRACTED SPECIFICATIONS ::' },
+                                    ...specs.map(spec => ({
+                                        role: 'item',
+                                        title: spec.label,
+                                        content: spec.value
+                                    })),
+                                    { role: 'header', title: ':: SOURCE ::' },
+                                    { role: 'item', title: 'Service', content: 'IMEI.info Web Service' },
+                                    { role: 'item', title: 'Accuracy', content: 'High - Official Database' }
+                                ]
+                            };
+                        }
+                    } catch (e) {
+                        console.error('IMEI.info Parse Error:', e);
                     }
                     return null;
                 }
