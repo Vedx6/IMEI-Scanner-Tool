@@ -1,0 +1,7 @@
+# Ignore local config containing secrets
+config.js
+
+# Optional: Node modules or other local files
+node_modules/
+.DS_Store
+.env

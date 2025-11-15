@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SECURED_CONSOLE: IMEI Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-green: #00ff00;
+            --critical-red: #ff3333;
+            --terminal-dark: #000000;
+            --terminal-font: 'Space Mono', monospace;
+        }
+        body {
+            font-family: var(--terminal-font);
+            background-color: var(--terminal-dark);
+            color: var(--neon-green);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            text-shadow: 0 0 3px rgba(0, 255, 0, 0.4), 0 0 6px rgba(255, 51, 51, 0.3);
+            overflow-y: scroll;
+        }
+        .terminal-box {
+            border: 2px solid var(--critical-red);
+            box-shadow: 0 0 25px rgba(255, 51, 51, 0.7);
+            background-color: rgba(0, 0, 0, 0.95);
+            animation: red-flicker 1.5s infinite alternate;
+            position: relative;
+            overflow: hidden;
+        }
+        .scan-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 50%, rgba(0, 255, 0, 0.05) 50%);
+            background-size: 100% 4px;
+            animation: scan-move 0.3s infinite linear;
+            opacity: 0.1;
+        }
+        @keyframes scan-move {
+            from { background-position: 0 0; }
+            to { background-position: 0 4px; }
+        }
+        @keyframes red-flicker {
+            0% { border-color: var(--critical-red); box-shadow: 0 0 20px rgba(255, 51, 51, 0.6); }
+            100% { border-color: #ffaa00; box-shadow: 0 0 25px rgba(255, 170, 0, 0.8); }
+        }
+        @keyframes slide-fade-in {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .result-card {
+            animation: slide-fade-in 0.5s ease-out both;
+        }
+        .terminal-input {
+            background-color: rgba(0, 0, 0, 0.9);
+            color: var(--neon-green);
+            border: 1px solid var(--neon-green);
+            box-shadow: 0 0 7px rgba(0, 255, 0, 0.4);
+            outline: none;
+        }
+        .terminal-input:focus {
+            border-color: #00ffff;
+            box-shadow: 0 0 12px rgba(0, 255, 255, 0.8);
+        }
+        .terminal-button {
+            background-color: var(--critical-red);
+            color: var(--terminal-dark);
+            font-weight: bold;
+            box-shadow: 0 0 15px var(--critical-red);
+            transition: all 0.1s ease-in-out;
+            cursor: pointer;
+        }
+        .terminal-button:hover:enabled {
+            background-color: var(--neon-green);
+            color: #000;
+            box-shadow: 0 0 20px var(--neon-green);
+        }
+        .terminal-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #333;
+            box-shadow: none;
+        }
+        .main-title {
+            color: var(--neon-green);
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+            border: 1px dotted var(--critical-red);
+            padding: 0.5rem;
+            margin-bottom: 2rem;
+            animation: pulse-green 2s infinite;
+        }
+        @keyframes pulse-green {
+            0% { opacity: 1; box-shadow: 0 0 5px var(--neon-green); }
+            50% { opacity: 0.9; box-shadow: 0 0 15px var(--neon-green); }
+            100% { opacity: 1; box-shadow: 0 0 5px var(--neon-green); }
+        }
+        .header-brand {
+            color: var(--critical-red);
+            text-shadow: 0 0 5px rgba(255, 51, 51, 0.7);
+        }
+        .blinking-cursor {
+            font-weight: bold;
+            animation: blink 1s step-start infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+        .copy-button {
+            color: var(--neon-green);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            margin-left: 8px;
+            transition: color 0.2s;
+        }
+        .copy-button:hover {
+            color: #00ffff;
+            text-shadow: 0 0 5px #00ffff;
+        }
+        .fade-in {
+            animation: fadeIn 1s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .premium-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            text-shadow: none;
+            display: inline-block;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+    <div id="app" class="w-full max-w-4xl terminal-box rounded-lg p-6 md:p-10">
+        <div class="scan-lines"></div>
+
+        <header class="text-center border-b-4 border-dashed border-red-700 pb-4 mb-6">
+            <h1 class="text-3xl font-bold text-red-500">[ SYSTEM_OVERRIDE ] | ACCESS_GRANTED</h1>
+            <p id="headerStatus" class="text-sm mt-2 text-green-500"></p>
+        </header>
+
+        <h2 class="main-title text-center text-3xl font-bold uppercase mb-8">IMEI DEVICE SCANNER PRO</h2>
+
+        <div class="flex flex-col gap-3 mb-8 relative z-10">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <span class="text-lg pt-3 hidden sm:block">$ VEDX_SHELL <span class="blinking-cursor">|</span></span>
+                <input type="text" id="imeiInput" placeholder="ENTER IMEI (15 DIGITS)" value="357435933573385" class="flex-grow p-3 rounded-none terminal-input text-lg placeholder-green-700 uppercase">
+                <button id="fetchButton" class="terminal-button py-3 px-6 rounded-none text-lg">&gt; SCAN_DEVICE &lt;</button>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-3 items-center">
+                <label class="text-green-400 font-bold text-sm">SELECT_API:</label>
+                <select id="apiSelector" class="flex-grow p-2 rounded-none terminal-input text-sm">
+                    <optgroup label="🔥 PREMIUM PAID APIS">
+                        <option value="premium">Vedx Premium API (BEST ACCURACY)</option>
+                        <option value="imeimaster">IMEI Master (Premium Paid)</option>
+                    </optgroup>
+                    <optgroup label="⚡ COMBINED & INTELLIGENT">
+                        <option value="multi">Multi-Source Intelligence (API + Local)</option>
+                    </optgroup>
+                    <optgroup label="💾 OFFLINE">
+                        <option value="local">Local TAC Database (Offline Mode)</option>
+                    </optgroup>
+                </select>
+            </div>
+        </div>
+
+        <div id="messageArea" class="text-center text-sm p-3 mb-6 relative z-10 hidden"></div>
+
+        <div id="resultsContainer" class="space-y-6 relative z-10"></div>
+        
+        <footer class="mt-8 text-xs text-center border-t border-dotted border-red-700 pt-4 relative z-10">
+            <p>DEVICE_INTEL_SYSTEM v11.0 PRO &lt; STATUS: PREMIUM API ENABLED &gt; Developed by <span class="font-bold text-red-500">VEDX</span></p>
+        </footer>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+    <script>
+        const imeiInput = document.getElementById('imeiInput');
+        const fetchButton = document.getElementById('fetchButton');
+        const messageArea = document.getElementById('messageArea');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const headerStatus = document.getElementById('headerStatus');
+        const apiSelector = document.getElementById('apiSelector');
+
+        function typeMessage(element, message, delay = 50) {
+            return new Promise(resolve => {
+                element.textContent = '';
+                let i = 0;
+                function type() {
+                    if (i < message.length) {
+                        element.textContent += message.charAt(i);
+                        i++;
+                        setTimeout(type, delay);
+                    } else {
+                        resolve();
+                    }
+                }
+                type();
+            });
+        }
+        
+        window.copyToClipboard = function(text, element) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = element.innerHTML;
+                element.innerHTML = 'COPIED!';
+                element.style.color = 'var(--critical-red)';
+                setTimeout(() => {
+                    element.innerHTML = originalText;
+                    element.style.color = 'var(--neon-green)';
+                }, 1000);
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+            });
+        }
+
+        function showMessage(text, type = 'info') {
+            messageArea.innerHTML = '';
+            messageArea.className = 'text-center text-sm p-3 mb-6 border-b border-t border-dotted';
+            messageArea.classList.remove('hidden');
+
+            if (type === 'error') {
+                messageArea.style.borderColor = 'var(--critical-red)';
+                messageArea.style.color = 'var(--critical-red)';
+                messageArea.style.textShadow = '0 0 7px rgba(255, 51, 51, 1)';
+            } else if (type === 'loading') {
+                messageArea.style.borderColor = '#ffaa00';
+                messageArea.style.color = '#ffaa00';
+                messageArea.style.textShadow = '0 0 5px rgba(255, 170, 0, 0.7)';
+            } else if (type === 'premium') {
+                messageArea.style.borderColor = '#764ba2';
+                messageArea.style.color = '#764ba2';
+                messageArea.style.textShadow = '0 0 5px rgba(118, 75, 162, 0.7)';
+            } else {
+                messageArea.style.borderColor = 'var(--neon-green)';
+                messageArea.style.color = 'var(--neon-green)';
+                messageArea.style.textShadow = '0 0 5px rgba(0, 255, 0, 0.6)';
+            }
+            
+            typeMessage(messageArea, `[ ${type.toUpperCase()}_STATUS ] > ${text}`);
+        }
+
+        function hideMessage() {
+            messageArea.classList.add('hidden');
+            messageArea.textContent = '';
+        }
+
+        function renderResults(data) {
+            resultsContainer.innerHTML = '';
+            
+            const header = data.header;
+            const items = data.items;
+            
+            const headerCard = `
+                <div id="headerCard" class="flex flex-col sm:flex-row items-center sm:items-start p-5 terminal-box rounded-none shadow-none border-dashed border-2 bg-black border-red-500 result-card" style="animation-delay: 0s;">
+                    <img src="${header.photo || 'https://placehold.co/120x150/000000/ff3333?text=DEVICE'}" alt="${header.brand} ${header.model}" onerror="this.onerror=null;this.src='https://placehold.co/120x150/000000/ff3333?text=DEVICE';" class="w-32 h-40 object-contain rounded-none mb-4 sm:mb-0 sm:mr-6 bg-transparent p-1 border border-dashed border-red-700 fade-in">
+                    <div class="text-center sm:text-left">
+                        <h2 class="text-4xl font-bold uppercase header-brand">${header.brand}</h2>
+                        <h3 class="text-2xl font-medium text-green-400 mb-2">${header.model}</h3>
+                        <p class="text-sm text-yellow-400 mb-2">${header.type || 'Mobile Device'}</p>
+                        <p class="text-lg mt-4 text-red-300">TARGET IMEI: <span class="text-xl font-mono text-neon-green" id="imeiDisplay">${header.imei}</span>
+                            <button class="copy-button" onclick="copyToClipboard('${header.imei}', this)">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                        </p>
+                    </div>
+                </div>
+            `;
+            resultsContainer.insertAdjacentHTML('beforeend', headerCard);
+
+            let currentGroupHtml = '';
+            let cardIndex = 1;
+            
+            items.forEach(item => {
+                if (item.role === 'header') {
+                    if (currentGroupHtml !== '') {
+                        currentGroupHtml += '</div>';
+                        const card = `<div class="p-5 terminal-box rounded-none border-dotted shadow-none mt-6 bg-black border-red-500 result-card" style="animation-delay: ${cardIndex * 0.1}s;">${currentGroupHtml}</div>`;
+                        resultsContainer.insertAdjacentHTML('beforeend', card);
+                        currentGroupHtml = '';
+                        cardIndex++;
+                    }
+                    const headerHtml = `<h4 class="text-xl font-bold text-red-500 mb-4" style="text-shadow: none;">${item.title}</h4><div class="space-y-2">`;
+                    currentGroupHtml += headerHtml;
+                } else if (item.role === 'item') {
+                    const itemHtml = `
+                        <div class="flex justify-between border-b border-dashed border-green-700 py-1">
+                            <span class="text-red-400 uppercase text-sm">${item.title}</span>
+                            <span class="font-medium text-neon-green text-sm">${item.content}</span>
+                        </div>
+                    `;
+                    currentGroupHtml += itemHtml;
+                }
+            });
+
+            if (currentGroupHtml !== '') {
+                currentGroupHtml += '</div>';
+                const card = `<div class="p-5 terminal-box rounded-none border-dotted shadow-none mt-6 bg-black border-red-500 result-card" style="animation-delay: ${cardIndex * 0.1}s;">${currentGroupHtml}</div>`;
+                resultsContainer.insertAdjacentHTML('beforeend', card);
+            }
+        }
+
+        // COMPREHENSIVE TAC DATABASE WITH FULL SPECIFICATIONS
+        const COMPREHENSIVE_TAC_DATABASE = {
+            '35389310': {
+                brand: 'Apple', model: 'iPhone 11 Pro Max', manufacturer: 'Apple Inc.',
+                os: 'iOS 13, upgradable to iOS 17', chipset: 'Apple A13 Bionic (7 nm+)',
+                camera: '12 MP (wide) + 12 MP (telephoto) + 12 MP (ultrawide)', 
+                frontCamera: '12 MP (f/2.2, 23mm)',
+                display: '6.5" Super Retina XDR OLED, 1242 x 2688 pixels, 458 ppi',
+                battery: '3969 mAh, Fast charging 18W, Qi wireless charging 15W',
+                ram: '4 GB', storage: '64/256/512 GB (Non-expandable)',
+                network: '2G, 3G, 4G LTE', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.0, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer',
+                dimensions: '158 x 77.8 x 8.1 mm', weight: '226 g',
+                colors: 'Space Gray, Silver, Gold, Midnight Green',
+                price: 'Starting at $1,099'
+            },
+            '35301011': {
+                brand: 'Apple', model: 'iPhone 12 mini', manufacturer: 'Apple Inc.',
+                os: 'iOS 14.1, upgradable to iOS 17', chipset: 'Apple A14 Bionic',
+                camera: '12 MP (wide, f/1.6) + 12 MP (ultrawide, f/2.4)',
+                frontCamera: '12 MP (f/2.2, 23mm)',
+                display: '5.4" Super Retina XDR OLED, 1080 x 2340 pixels, 476 ppi',
+                battery: '2227 mAh, Fast charging 20W, Qi wireless charging 15W',
+                ram: '4 GB', storage: '64/128/256 GB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.0, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer, LiDAR',
+                dimensions: '131.5 x 64.2 x 7.4 mm', weight: '135 g',
+                colors: 'Black, White, Red, Green, Blue, Purple',
+                price: 'Starting at $729'
+            },
+            '86622406': {
+                brand: 'Xiaomi', model: 'Redmi Note 8 Pro', manufacturer: 'Xiaomi Corporation',
+                os: 'Android 9.0 (Pie), MIUI 11, upgradable to MIUI 12',
+                chipset: 'MediaTek Helio G90T (12nm)',
+                camera: '64 MP (wide, f/1.9) + 8 MP (ultrawide) + 2 MP (macro) + 2 MP (depth)',
+                frontCamera: '20 MP (f/2.0)',
+                display: '6.53" IPS LCD, 1080 x 2340 pixels, 395 ppi, Corning Gorilla Glass 5',
+                battery: '4500 mAh, Fast charging 18W',
+                ram: '6/8 GB', storage: '64/128 GB + microSDXC (dedicated slot)',
+                network: '2G, 3G, 4G LTE', sim: 'Dual Nano-SIM (Dual standby)',
+                bluetooth: '5.0, A2DP, LE', usb: 'USB Type-C 2.0, OTG', nfc: 'Yes (Market dependent)',
+                sensors: 'Fingerprint (rear-mounted), accelerometer, gyro, proximity, compass',
+                dimensions: '161.4 x 76.4 x 8.8 mm', weight: '200 g',
+                colors: 'Mineral Grey, Forest Green, Pearl White',
+                price: 'Starting at $249'
+            },
+            '35743593': {
+                brand: 'Apple', model: 'iPhone 16 Pro Max', manufacturer: 'Apple Inc.',
+                os: 'iOS 18, latest version', chipset: 'Apple A18 Pro',
+                camera: '48 MP (wide, f/1.78) + 12 MP (ultrawide, f/2.2) + 12 MP (5x telephoto, f/2.8)',
+                frontCamera: '12 MP (f/1.9, 23mm)',
+                display: '6.9" Super Retina XDR OLED, 1440 x 3120 pixels, 460 ppi, Always-On display',
+                battery: '4685 mAh, Fast charging 45W, Qi wireless charging 25W',
+                ram: '8 GB', storage: '256/512GB/1TB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G (sub-6 GHz & mmWave)', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.4, A2DP, LE', usb: 'USB Type-C 3.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer, LiDAR, temperature sensor',
+                dimensions: '163 x 77.8 x 8.25 mm', weight: '221 g',
+                colors: 'Black Titanium, White Titanium, Natural Titanium, Desert Titanium',
+                price: 'Starting at $1,199'
+            },
+            '35515106': {
+                brand: 'Apple', model: 'iPhone 15 Pro Max', manufacturer: 'Apple Inc.',
+                os: 'iOS 17', chipset: 'Apple A17 Pro',
+                camera: '48 MP (wide, f/1.78) + 12 MP (ultrawide, f/2.2) + 12 MP (3x telephoto, f/2.8)',
+                frontCamera: '12 MP (f/1.9, 23mm)',
+                display: '6.7" Super Retina XDR OLED, 1290 x 2796 pixels, 460 ppi',
+                battery: '4323 mAh, Fast charging 30W, Qi wireless charging 15W',
+                ram: '8 GB', storage: '256/512GB/1TB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.3, A2DP, LE', usb: 'USB Type-C 3.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer, LiDAR',
+                dimensions: '160.9 x 77.8 x 8.25 mm', weight: '216 g',
+                colors: 'Black Titanium, White Titanium, Natural Titanium, Blue Titanium',
+                price: 'Starting at $1,099'
+            },
+            '35414669': {
+                brand: 'Apple', model: 'iPhone 14 Pro Max', manufacturer: 'Apple Inc.',
+                os: 'iOS 16, upgradable to iOS 17', chipset: 'Apple A16 Bionic',
+                camera: '48 MP (wide, f/1.78) + 12 MP (ultrawide, f/2.2) + 12 MP (3x telephoto, f/2.8)',
+                frontCamera: '12 MP (f/1.9, 23mm)',
+                display: '6.7" Super Retina XDR OLED, 1284 x 2778 pixels, 458 ppi',
+                battery: '4323 mAh, Fast charging 27W, Qi wireless charging 15W',
+                ram: '6 GB', storage: '128/256/512GB/1TB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.3, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer',
+                dimensions: '160.7 x 77.8 x 7.85 mm', weight: '240 g',
+                colors: 'Space Black, Silver, Gold, Deep Purple',
+                price: 'Starting at $1,099'
+            },
+            '35336609': {
+                brand: 'Apple', model: 'iPhone 13 Pro Max', manufacturer: 'Apple Inc.',
+                os: 'iOS 15, upgradable to iOS 17', chipset: 'Apple A15 Bionic',
+                camera: '12 MP (wide, f/1.6) + 12 MP (ultrawide, f/1.8) + 12 MP (3x telephoto, f/2.8)',
+                frontCamera: '12 MP (f/2.2, 23mm)',
+                display: '6.7" Super Retina XDR OLED, 1284 x 2778 pixels, 458 ppi',
+                battery: '3095 mAh, Fast charging 23W, Qi wireless charging 15W',
+                ram: '6 GB', storage: '128/256/512GB/1TB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.0, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer',
+                dimensions: '160.8 x 78.1 x 7.65 mm', weight: '238 g',
+                colors: 'Silver, Gold, Rose Gold, Sierra Blue, Alpine Green',
+                price: 'Starting at $1,099'
+            },
+            '35208809': {
+                brand: 'Apple', model: 'iPhone 13 Pro', manufacturer: 'Apple Inc.',
+                os: 'iOS 15, upgradable to iOS 17', chipset: 'Apple A15 Bionic',
+                camera: '12 MP (wide, f/1.6) + 12 MP (ultrawide, f/1.8) + 12 MP (3x telephoto, f/2.8)',
+                frontCamera: '12 MP (f/2.2, 23mm)',
+                display: '6.1" Super Retina XDR OLED, 1170 x 2532 pixels, 460 ppi',
+                battery: '3200 mAh, Fast charging 23W, Qi wireless charging 15W',
+                ram: '6 GB', storage: '128/256/512GB/1TB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.0, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer',
+                dimensions: '146.7 x 73.3 x 7.65 mm', weight: '203 g',
+                colors: 'Silver, Gold, Rose Gold, Sierra Blue, Alpine Green',
+                price: 'Starting at $999'
+            },
+            '35300108': {
+                brand: 'Apple', model: 'iPhone 12 Pro Max', manufacturer: 'Apple Inc.',
+                os: 'iOS 14.1, upgradable to iOS 17', chipset: 'Apple A14 Bionic',
+                camera: '12 MP (wide, f/1.6) + 12 MP (ultrawide, f/2.4) + 12 MP (2.5x telephoto, f/2.2)',
+                frontCamera: '12 MP (f/2.2, 23mm)',
+                display: '6.7" Super Retina XDR OLED, 1284 x 2778 pixels, 458 ppi',
+                battery: '3687 mAh, Fast charging 20W, Qi wireless charging 15W',
+                ram: '6 GB', storage: '128/256/512GB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.0, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer, LiDAR',
+                dimensions: '160.8 x 78.1 x 7.4 mm', weight: '226 g',
+                colors: 'Silver, Graphite, Gold, Pacific Blue',
+                price: 'Starting at $1,099'
+            },
+            '35209300': {
+                brand: 'Apple', model: 'iPhone 12 Pro', manufacturer: 'Apple Inc.',
+                os: 'iOS 14.1, upgradable to iOS 17', chipset: 'Apple A14 Bionic',
+                camera: '12 MP (wide, f/1.6) + 12 MP (ultrawide, f/2.4) + 12 MP (2x telephoto, f/2.0)',
+                frontCamera: '12 MP (f/2.2, 23mm)',
+                display: '6.1" Super Retina XDR OLED, 1170 x 2532 pixels, 460 ppi',
+                battery: '2815 mAh, Fast charging 20W, Qi wireless charging 15W',
+                ram: '6 GB', storage: '128/256/512GB (Non-expandable)',
+                network: '2G, 3G, 4G LTE, 5G', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.0, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer, LiDAR',
+                dimensions: '146.7 x 71.5 x 7.4 mm', weight: '187 g',
+                colors: 'Silver, Graphite, Gold, Pacific Blue',
+                price: 'Starting at $999'
+            },
+            '35389309': {
+                brand: 'Apple', model: 'iPhone 11 Pro', manufacturer: 'Apple Inc.',
+                os: 'iOS 13, upgradable to iOS 17', chipset: 'Apple A13 Bionic (7 nm+)',
+                camera: '12 MP (wide) + 12 MP (telephoto) + 12 MP (ultrawide)',
+                frontCamera: '12 MP (f/2.2, 23mm)',
+                display: '5.8" Super Retina XDR OLED, 1125 x 2436 pixels, 458 ppi',
+                battery: '3046 mAh, Fast charging 18W, Qi wireless charging 15W',
+                ram: '4 GB', storage: '64/256/512 GB (Non-expandable)',
+                network: '2G, 3G, 4G LTE', sim: 'Nano-SIM + eSIM (Dual SIM)',
+                bluetooth: '5.0, A2DP, LE', usb: 'Lightning, USB 2.0', nfc: 'Yes (Apple Pay)',
+                sensors: 'Face ID, accelerometer, gyro, proximity, compass, barometer',
+                dimensions: '144 x 71.4 x 8.1 mm', weight: '188 g',
+                colors: 'Space Gray, Silver, Gold, Midnight Green',
+                price: 'Starting at $999'
+            }
+        };
+
+        const API_ENDPOINTS = {
+            'premium': {
+                name: '🔒 Vedx Premium API (BEST ACCURACY)',
+                url: (imei) => `https://api.allorigins.win/get?url=${encodeURIComponent('https://ng-imei-info.vercel.app/?imei_num=' + imei)}`,
+                parser: async (data, imei) => {
+                    try {
+                        // Parse the response from allorigins proxy
+                        let responseData;
+                        if (data.contents) {
+                            responseData = JSON.parse(data.contents);
+                        } else {
+                            responseData = data;
+                        }
+                        
+                        console.log('Premium API Raw Response:', responseData);
+                        
+                        // Parse the premium API response structure
+                        if (responseData && responseData.result) {
+                            const result = responseData.result;
+                            const header = result.header || {};
+                            const items = result.items || [];
+                            
+                            return {
+                                header: {
+                                    brand: header.brand || 'Unknown',
+                                    model: header.model || 'Unknown Model',
+                                    imei: header.imei || imei,
+                                    type: 'Smartphone',
+                                    photo: header.photo || `https://placehold.co/120x150/000000/764ba2?text=${encodeURIComponent(header.brand || 'PREMIUM')}`
+                                },
+                                items: items.map(item => ({
+                                    role: item.role || 'item',
+                                    title: item.title || 'Info',
+                                    content: item.content || 'N/A'
+                                }))
+                            };
+                        }
+                    } catch (e) {
+                        console.error('Premium API Parse Error:', e);
+                    }
+                    return null;
+                }
+            },
+            'imeimaster': {
+                name: '🔒 IMEI Master (Premium Paid)',
+                url: (imei) => `https://api.allorigins.win/get?url=${encodeURIComponent('https://imemaster.com/api/v1/device?imei=' + imei)}`,
+                parser: async (data, imei) => {
+                    try {
+                        let responseData;
+                        if (data.contents) {
+                            responseData = JSON.parse(data.contents);
+                        } else {
+                            responseData = data;
+                        }
+                        
+                        if (responseData && responseData.data) {
+                            const device = responseData.data;
+                            return {
+                                header: {
+                                    brand: device.brand || 'Unknown',
+                                    model: device.model || 'Unknown',
+                                    imei: imei,
+                                    type: 'Smartphone',
+                                    photo: device.photo || `https://placehold.co/120x150/000000/ff00ff?text=${encodeURIComponent(device.brand || 'DEVICE')}`
+                                },
+                                items: [
+                                    { role: 'header', title: ':: MASTER DEVICE DATA ::' },
+                                    { role: 'item', title: 'Brand', content: device.brand || 'N/A' },
+                                    { role: 'item', title: 'Model', content: device.model || 'N/A' },
+                                    { role: 'item', title: 'Release Year', content: device.year || 'N/A' },
+                                    { role: 'header', title: ':: TECHNICAL SPECS ::' },
+                                    { role: 'item', title: 'Chipset', content: device.chipset || 'N/A' },
+                                    { role: 'item', title: 'RAM', content: device.ram || 'N/A' },
+                                    { role: 'item', title: 'Display', content: device.display || 'N/A' },
+                                    { role: 'item', title: 'Battery', content: device.battery || 'N/A' }
+                                ]
+                            };
+                        }
+                    } catch (e) {
+                        console.error('IMEI Master Parse Error:', e);
+                    }
+                    return null;
+                }
+            },
+            'local': {
+                name: 'Local TAC Database (Offline)',
+                url: null,
+                parser: async (data, imei) => {
+                    const tac = imei.substring(0, 8);
+                    const deviceInfo = COMPREHENSIVE_TAC_DATABASE[tac];
+                    
+                    if (!deviceInfo) {
+                        return {
+                            header: {
+                                brand: 'Unknown',
+                                model: 'Device Not Found',
+                                imei: imei,
+                                type: 'Unknown',
+                                photo: 'https://placehold.co/120x150/000000/ff3333?text=NOT_FOUND'
+                            },
+                            items: [
+                                { role: 'header', title: ':: ERROR ::' },
+                                { role: 'item', title: 'Status', content: 'TAC not in local database' },
+                                { role: 'item', title: 'TAC', content: tac },
+                                { role: 'item', title: 'Suggestion', content: 'Try "Premium API" for complete info' }
+                            ]
+                        };
+                    }
+
+                    return {
+                        header: {
+                            brand: deviceInfo.brand,
+                            model: deviceInfo.model,
+                            imei: imei,
+                            type: 'Smartphone',
+                            photo: `https://placehold.co/120x150/000000/00ff00?text=${encodeURIComponent(deviceInfo.brand)}`
+                        },
+                        items: [
+                            { role: 'header', title: ':: DEVICE IDENTIFICATION ::' },
+                            { role: 'item', title: 'Brand', content: deviceInfo.brand },
+                            { role: 'item', title: 'Model', content: deviceInfo.model },
+                            { role: 'item', title: 'Manufacturer', content: deviceInfo.manufacturer },
+                            { role: 'item', title: 'Colors Available', content: deviceInfo.colors },
+                            { role: 'item', title: 'Launch Price', content: deviceInfo.price },
+                            
+                            { role: 'header', title: ':: OPERATING SYSTEM ::' },
+                            { role: 'item', title: 'OS', content: deviceInfo.os },
+                            { role: 'item', title: 'Chipset', content: deviceInfo.chipset },
+                            
+                            { role: 'header', title: ':: CAMERA SYSTEM ::' },
+                            { role: 'item', title: 'Main Camera', content: deviceInfo.camera },
+                            { role: 'item', title: 'Front Camera', content: deviceInfo.frontCamera },
+                            
+                            { role: 'header', title: ':: DISPLAY ::' },
+                            { role: 'item', title: 'Screen', content: deviceInfo.display },
+                            
+                            { role: 'header', title: ':: BATTERY & MEMORY ::' },
+                            { role: 'item', title: 'Battery', content: deviceInfo.battery },
+                            { role: 'item', title: 'RAM', content: deviceInfo.ram },
+                            { role: 'item', title: 'Storage', content: deviceInfo.storage },
+                            
+                            { role: 'header', title: ':: CONNECTIVITY ::' },
+                            { role: 'item', title: 'Network', content: deviceInfo.network },
+                            { role: 'item', title: 'SIM Type', content: deviceInfo.sim },
+                            { role: 'item', title: 'Bluetooth', content: deviceInfo.bluetooth },
+                            { role: 'item', title: 'USB', content: deviceInfo.usb },
+                            { role: 'item', title: 'NFC', content: deviceInfo.nfc },
+                            
+                            { role: 'header', title: ':: SENSORS & PHYSICAL ::' },
+                            { role: 'item', title: 'Sensors', content: deviceInfo.sensors },
+                            { role: 'item', title: 'Dimensions', content: deviceInfo.dimensions },
+                            { role: 'item', title: 'Weight', content: deviceInfo.weight },
+                            
+                            { role: 'header', title: ':: IMEI BREAKDOWN ::' },
+                            { role: 'item', title: 'Full IMEI', content: imei },
+                            { role: 'item', title: 'TAC', content: tac },
+                            { role: 'item', title: 'Serial', content: imei.substring(8, 14) },
+                            { role: 'item', title: 'Check Digit', content: imei.substring(14, 15) },
+                            { role: 'item', title: 'Status', content: 'Valid & Verified' }
+                        ]
+                    };
+                }
+            },
+            'multi': {
+                name: 'Multi-Source Intelligence (Premium + Local)',
+                url: (imei) => `https://ng-imei-info.vercel.app/?imei_num=${imei}`,
+                parser: async (data, imei) => {
+                    // Try Premium API first
+                    if (data && data.result && data.result.header) {
+                        const result = data.result;
+                        const header = result.header;
+                        const items = result.items || [];
+                        
+                        return {
+                            header: {
+                                brand: header.brand || 'Unknown',
+                                model: header.model || 'Unknown Model',
+                                imei: header.imei || imei,
+                                type: 'Smartphone',
+                                photo: header.photo || `https://placehold.co/120x150/000000/764ba2?text=${encodeURIComponent(header.brand || 'DEVICE')}`
+                            },
+                            items: items.map(item => ({
+                                role: item.role || 'item',
+                                title: item.title || 'Info',
+                                content: item.content || 'N/A'
+                            }))
+                        };
+                    }
+                    
+                    // Fallback to local database
+                    const tac = imei.substring(0, 8);
+                    const deviceInfo = COMPREHENSIVE_TAC_DATABASE[tac];
+                    
+                    if (deviceInfo) {
+                        return await API_ENDPOINTS['local'].parser(null, imei);
+                    }
+                    
+                    // Complete fallback
+                    return {
+                        header: {
+                            brand: 'Unknown',
+                            model: 'Device Information Unavailable',
+                            imei: imei,
+                            type: 'Unknown',
+                            photo: 'https://placehold.co/120x150/000000/ffaa00?text=UNKNOWN'
+                        },
+                        items: [
+                            { role: 'header', title: ':: IMEI STRUCTURE ::' },
+                            { role: 'item', title: 'Full IMEI', content: imei },
+                            { role: 'item', title: 'TAC', content: tac },
+                            { role: 'item', title: 'Serial Number', content: imei.substring(8, 14) },
+                            { role: 'item', title: 'Check Digit', content: imei.substring(14, 15) },
+                            { role: 'header', title: ':: STATUS ::' },
+                            { role: 'item', title: 'Format', content: 'Valid (15 digits)' },
+                            { role: 'item', title: 'Database Status', content: 'Not Found' },
+                            { role: 'item', title: 'Suggestion', content: 'Device may be new or uncommon model' }
+                        ]
+                    };
+                }
+            }
+        };
+
+        async function runLocalScan() {
+            const imei = imeiInput.value.trim();
+            const selectedApi = apiSelector.value;
+
+            if (!imei) {
+                return showMessage('ERROR: IMEI FIELD EMPTY. ABORTING SCAN.', 'error');
+            }
+            if (!/^\d{15}$/.test(imei)) {
+                return showMessage('ERROR: INVALID IMEI FORMAT. EXPECTED 15 DIGITS.', 'error');
+            }
+
+            hideMessage();
+            resultsContainer.innerHTML = '';
+            fetchButton.disabled = true;
+            apiSelector.disabled = true;
+            fetchButton.textContent = '... SCANNING DATABASE ...';
+            
+            const apiConfig = API_ENDPOINTS[selectedApi];
+            
+            if (selectedApi === 'premium' || selectedApi === 'multi') {
+                await showMessage(`PREMIUM ACCESS: ${apiConfig.name} for IMEI ${imei}. STANDBY.`, 'premium');
+            } else {
+                await showMessage(`INITIATING: ${apiConfig.name} for IMEI ${imei}. STANDBY.`, 'loading');
+            }
+            
+            try {
+                let parsedResult;
+                
+                if (selectedApi === 'local') {
+                    // Local database - no API call needed
+                    parsedResult = await apiConfig.parser(null, imei);
+                } else {
+                    // API call needed
+                    const apiUrl = apiConfig.url(imei);
+                    console.log('Fetching from:', apiUrl);
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'User-Agent': 'Mozilla/5.0'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP Error: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('API Response:', data);
+                    
+                    parsedResult = await apiConfig.parser(data, imei);
+                }
+                
+                if (parsedResult && parsedResult.header && parsedResult.items && parsedResult.items.length > 0) {
+                    renderResults(parsedResult);
+                    if (selectedApi === 'premium' || selectedApi === 'multi') {
+                        showMessage(`PREMIUM SUCCESS: Complete device data retrieved from ${apiConfig.name}! 🔥`, 'premium');
+                    } else {
+                        showMessage(`SUCCESS: Device information retrieved from ${apiConfig.name}.`, 'info');
+                    }
+                } else {
+                    showMessage('WARNING: Limited data available. Trying fallback...', 'error');
+                    const fallbackResult = await API_ENDPOINTS['local'].parser(null, imei);
+                    renderResults(fallbackResult);
+                }
+            } catch (error) {
+                console.error('API Error:', error);
+                showMessage(`NETWORK ERROR: ${error.message}. Using offline mode...`, 'error');
+                
+                // Fallback to local database
+                const fallbackResult = await API_ENDPOINTS['local'].parser(null, imei);
+                renderResults(fallbackResult);
+            }
+            
+            fetchButton.disabled = false;
+            apiSelector.disabled = false;
+            fetchButton.textContent = '> SCAN_DEVICE <';
+        }
+
+        fetchButton.addEventListener('click', runLocalScan);
+
+        imeiInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                runLocalScan();
+            }
+        });
+
+        window.onload = async () => {
+            await typeMessage(headerStatus, 'PREMIUM SYSTEM ONLINE: PAID API READY...');
+            await showMessage('PREMIUM MODE: Using NG-IMEI Paid API for maximum accuracy! 🚀', 'premium');
+        }
+    </script>
+</body>
+</html>
