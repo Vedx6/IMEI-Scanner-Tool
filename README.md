@@ -1,6 +1,7 @@
 # IMEI Scanner Tool
 
 This is a small static web tool that queries multiple IMEI-info APIs and includes a local demo database and owner lookup.
+
 <img width="1333" height="913" alt="image" src="https://github.com/user-attachments/assets/afb2e6a1-abb3-473b-b342-58b59cd93071" />
 
 Quick start
